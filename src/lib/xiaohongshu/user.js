@@ -1,5 +1,27 @@
 import { renderRss2 } from '../../utils/util';
 
+let getCoverUrl = (cover) => {
+	return cover?.infoList?.[0]?.url || cover?.info_list?.[0]?.url || cover?.urlPre || cover?.urlDefault || cover?.url || '';
+};
+
+let buildGuid = ({ uid, noteId, xsecToken, title, coverUrl }) => {
+	return noteId || `${uid}:${title}:${coverUrl || xsecToken || 'xiaohongshu'}`;
+};
+
+let buildNoteLink = ({ uid, noteId, xsecToken, xsecSource = 'pc_user' }) => {
+	const baseUrl = 'https://www.xiaohongshu.com';
+	if (noteId) {
+		if (xsecToken) {
+			return `${baseUrl}/explore/${noteId}?xsec_token=${encodeURIComponent(xsecToken)}&xsec_source=${xsecSource}`;
+		}
+		return `${baseUrl}/explore/${noteId}`;
+	}
+	if (xsecToken) {
+		return `${baseUrl}/user/profile/${uid}?xsec_token=${encodeURIComponent(xsecToken)}&xsec_source=${xsecSource}`;
+	}
+	return `${baseUrl}/user/profile/${uid}`;
+};
+
 let getUser = async (url) => {
 	let res = await fetch(url, {
 		headers: {
@@ -45,14 +67,27 @@ let deal = async (ctx) => {
 
 	const renderNote = (notes) =>
 		notes.flatMap((n) =>
-			n.map(({ noteCard }) => ({
-				title: noteCard.displayTitle,
-				link: `${url}/${noteCard.noteId}`,
-				guid: noteCard.displayTitle,
-				description: `<img src ="${noteCard.cover.infoList.pop().url}"><br>${noteCard.displayTitle}`,
-				author: noteCard.user.nickname,
-				upvotes: noteCard.interactInfo.likedCount,
-			}))
+			n.map(({ noteCard }) => {
+				const coverUrl = getCoverUrl(noteCard.cover);
+				return {
+					title: noteCard.displayTitle,
+					link: buildNoteLink({
+						uid,
+						noteId: noteCard.noteId,
+						xsecToken: noteCard.xsecToken,
+					}),
+					guid: buildGuid({
+						uid,
+						noteId: noteCard.noteId,
+						xsecToken: noteCard.xsecToken,
+						title: noteCard.displayTitle,
+						coverUrl,
+					}),
+					description: `<img src ="${coverUrl}"><br>${noteCard.displayTitle}`,
+					author: noteCard.user.nickname,
+					upvotes: noteCard.interactInfo.likedCount,
+				};
+			})
 		);
 	const renderCollect = (collect) => {
 		if (!collect) {
@@ -64,16 +99,30 @@ let deal = async (ctx) => {
 		if (!collect.data.notes.length) {
 			throw ctx.throw(403, '该用户已设置收藏内容不可见');
 		}
-		return collect.data.notes.map((item) => ({
-			title: item.display_title,
-			link: `${url}/${item.note_id}`,
-			description: `<img src ="${item.cover.info_list.pop().url}"><br>${item.display_title}`,
-			author: item.user.nickname,
-			upvotes: item.interact_info.likedCount,
-		}));
+		return collect.data.notes.map((item) => {
+			const coverUrl = getCoverUrl(item.cover);
+			return {
+				title: item.display_title,
+				link: buildNoteLink({
+					uid,
+					noteId: item.note_id,
+					xsecToken: item.xsec_token || item.xsecToken,
+				}),
+				guid: buildGuid({
+					uid,
+					noteId: item.note_id,
+					xsecToken: item.xsec_token || item.xsecToken,
+					title: item.display_title,
+					coverUrl,
+				}),
+				description: `<img src ="${coverUrl}"><br>${item.display_title}`,
+				author: item.user.nickname,
+				upvotes: item.interact_info.likedCount,
+			};
+		});
 	};
 
-    ctx.header('Content-Type', 'application/xml');
+	ctx.header('Content-Type', 'application/xml');
 	return ctx.text(
 		renderRss2({
 			title,
